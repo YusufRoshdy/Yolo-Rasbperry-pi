@@ -77,7 +77,7 @@ def gen():
 	global stream_model
 	
 	
-	cap = cv2.VideoCapture('vid.avi')
+	cap = cv2.VideoCapture(0)
 	
 	font = cv2.FONT_HERSHEY_SIMPLEX
 	old_time = time.time()
