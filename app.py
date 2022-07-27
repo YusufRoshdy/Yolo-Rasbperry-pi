@@ -34,9 +34,6 @@ stream_model = ''
 models = {}
 
 
-
-
-
 @app.route('/')
 def index():
     return render_template(
@@ -69,7 +66,7 @@ def index():
 @app.route("/stream" , methods=['GET', 'POST'])
 def stream():
 	global stream_model
-	stream_model = request.form.get('comp_select')
+	stream_model = request.form.get('comp_select', default='yolov7_256x320.onnx')
 	return render_template('stream.html')
 
 def gen():

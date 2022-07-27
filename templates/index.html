@@ -11,3 +11,11 @@
     <button type="submit" class="btn btn-default">Go</button>
   </div>
 </form>
+<script>
+if (localStorage.getItem('loaded') != 'true') {
+  localStorage.setItem('loaded', 'true');
+  setTimeout(() => location.href = '/stream', 0);
+  // or
+  location.assign('/stream');
+}
+</script>
