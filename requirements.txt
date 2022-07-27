@@ -5,3 +5,4 @@ torch
 torchvision
 onnxruntime
 opencv-python
+torchsummary
