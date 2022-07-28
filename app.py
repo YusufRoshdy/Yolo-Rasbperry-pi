@@ -2,6 +2,7 @@
 from flask import Flask, flash, redirect, render_template, \
      request, url_for, Response
 import time
+from datetime import datetime
 import cv2 
 
 import yolov5
@@ -25,6 +26,7 @@ from utils.general import check_img_size, check_requirements, check_imshow, non_
 
 # onnx
 from YOLOv7onnx import YOLOv7
+from YOLOv7onnx.utils import class_names as yolov7_names
 
 
 app = Flask(__name__)
@@ -32,6 +34,21 @@ app = Flask(__name__)
 
 stream_model = ''
 models = {}
+
+
+from os.path import exists
+
+if not exists('log.txt'):
+    with open("log.txt", "w") as f:
+        L = 'Time, Xmin, Ymin, Xmax, Ymax, Confidence, Class ID, Class Name\n'
+        f.write(L)
+
+# Append-adds at last
+log_file = open("log.txt", "a")  # append mode
+log_file.write("Today \n")
+log_file.flush()
+#file1.close()
+
 
 
 @app.route('/')
@@ -99,7 +116,8 @@ def gen():
 			else:
 				frame = yolov7_onnx_process(frame)
 
-
+			log_file.flush()
+			
 			fps = f'FPS:{fps: 0.2f}'
 			cv2.putText(frame, fps, (7,70), font, 2, (0, 255, 0), 2)
 
@@ -131,6 +149,12 @@ def yolov5_process(frame, size='n'):
 		models[model_name] = model
 		
 	results = model(frame)
+	if len(results.pandas().xyxy[0]) >0:
+		now = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+		for idx, row in results.pandas().xyxy[0].iterrows():
+			line = f'{now}, {int(row.xmin):3d}, {int(row.ymin):3d}, {int(row.xmax):3d}, {int(row.ymax):3d}, {row.confidence:0.2f}, {int(row["class"]):2d}, {row["name"]}\n' 
+			print(line)
+			log_file.write(line)
 	new_frame = results.render()[0]
 	return new_frame
 	
@@ -181,7 +205,7 @@ def yolo_fastest_process(frame, w, h):
 
 	
 
-
+	now = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 	for box in output_boxes[0]:
 		box = box.tolist()
 	   
@@ -195,6 +219,9 @@ def yolo_fastest_process(frame, w, h):
 		cv2.putText(frame, '%.2f' % obj_score, (x1, y1 - 5), 0, 0.7, (0, 255, 0), 2)	
 		cv2.putText(frame, category, (x1, y1 - 25), 0, 0.7, (0, 255, 0), 2)
 
+		line = f'{now}, {x1:3d}, {y1:3d}, {x2:3d}, {y2:3d}, {obj_score:0.2f}, {int(box[5]):2d}, {category}\n'
+		print(line)
+		log_file.write(line)
 	return frame
 
 
@@ -216,9 +243,16 @@ def yolov7_onnx_process(frame, size='tiny_256x320'):
 
 	# Update object localizer
 	boxes, scores, class_ids = model(frame)
-
 	combined_img = model.draw_detections(frame)
 
+	now = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+	for i in range(len(class_ids)):
+		x1,y1,x2,y2 = boxes[i]
+		score = scores[i]
+		class_id = class_ids[i]
+		line = f'{now}, {int(x1):3d}, {int(y1):3d}, {int(x2):3d}, {int(y2):3d}, {score:0.2f}, {class_id:2d}, {yolov7_names[class_id]}\n'
+		print(line)
+		log_file.write(line)
 	return combined_img
 
 
@@ -294,21 +328,6 @@ def yolov7_process(frame, size='n'):
 				label = f'{names[int(cls)]} {conf:.2f}'
 				plot_one_box(xyxy, frame, label=label, color=colors[int(cls)], line_thickness=3)
 	return frame	
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
