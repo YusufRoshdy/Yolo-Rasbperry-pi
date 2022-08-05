@@ -3,7 +3,8 @@ from flask import Flask, flash, redirect, render_template, \
      request, url_for, Response
 import time
 from datetime import datetime
-import cv2 
+import cv2
+import numpy as np
 
 import yolov5
 
@@ -87,46 +88,54 @@ def stream():
 	return render_template('stream.html')
 
 def gen():
-	"""Video streaming generator function."""
-	global stream_model
-	
-	
-	cap = cv2.VideoCapture(0)
-	
-	font = cv2.FONT_HERSHEY_SIMPLEX
-	old_time = time.time()
+    """Video streaming generator function."""
+    global stream_model
+    
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    while True:
+        try:
+            cap = cv2.VideoCapture(0)
+            old_time = time.time()
 
-	# Read until video is completed
-	while(cap.isOpened()):
-		# Capture frame-by-frame
-		ret, frame = cap.read()
-		if ret == True:
+            # Read until video is completed
+            while(cap.isOpened()):
+                # Capture frame-by-frame
+                ret, frame = cap.read()
+                if ret != True:
+                    break
+                new_time = time.time()
+                fps = 1/(new_time-old_time)
+                old_time = new_time
 
+                if 'Yolov5' in stream_model:
+                    frame = yolov5_process(frame, size=stream_model[-1])
+                elif 'Yolov7n' in stream_model:
+                    frame = yolov7_process(frame, size=stream_model[-1])
+                elif 'Yolov-Fastestv2' == stream_model:
+                    frame = yolo_fastest_process(frame, frame.shape[1], frame.shape[0])
+                else:
+                    frame = yolov7_onnx_process(frame)
 
-			new_time = time.time()
-			fps = 1/(new_time-old_time)
-			old_time = new_time
+                log_file.flush()
 
-			if 'Yolov5' in stream_model:
-				frame = yolov5_process(frame, size=stream_model[-1])
-			elif 'Yolov7n' in stream_model:
-				frame = yolov7_process(frame, size=stream_model[-1])
-			elif 'Yolov-Fastestv2' == stream_model:
-				frame = yolo_fastest_process(frame, frame.shape[1], frame.shape[0])
-			else:
-				frame = yolov7_onnx_process(frame)
-
-			log_file.flush()
-			
-			fps = f'FPS:{fps: 0.2f}'
-			cv2.putText(frame, fps, (7,70), font, 2, (0, 255, 0), 2)
-
-
-
-			frame = cv2.imencode('.jpg', frame)[1].tobytes()
-			yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-		else: 
-			break
+                fps = f'FPS:{fps: 0.2f}'
+                cv2.putText(frame, fps, (7,70), font, 2, (0, 255, 0), 2)
+                
+                frame = cv2.imencode('.jpg', frame)[1].tobytes()
+                yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+            else:
+                rame = np.ones((512, 512))
+                cv2.putText(frame, "Camera is not available", (7,70), font, 2, (0, 255, 0), 2)
+                
+                frame = cv2.imencode('.jpg', frame)[1].tobytes()
+                yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        except:
+            frame = np.ones((512, 1024), dtype=np.int8)*254
+            cv2.putText(frame, "Camera is not available", (7,70), font, 2, (0, 255, 0), 2)
+            
+            frame = cv2.imencode('.jpg', frame)[1].tobytes()
+            yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+        
         
 
 def yolov5_process(frame, size='n'):
@@ -153,7 +162,7 @@ def yolov5_process(frame, size='n'):
 		now = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
 		for idx, row in results.pandas().xyxy[0].iterrows():
 			line = f'{now}, {int(row.xmin):3d}, {int(row.ymin):3d}, {int(row.xmax):3d}, {int(row.ymax):3d}, {row.confidence:0.2f}, {int(row["class"]):2d}, {row["name"]}\n' 
-			print(line)
+			# print(line)
 			log_file.write(line)
 	new_frame = results.render()[0]
 	return new_frame
@@ -220,7 +229,7 @@ def yolo_fastest_process(frame, w, h):
 		cv2.putText(frame, category, (x1, y1 - 25), 0, 0.7, (0, 255, 0), 2)
 
 		line = f'{now}, {x1:3d}, {y1:3d}, {x2:3d}, {y2:3d}, {obj_score:0.2f}, {int(box[5]):2d}, {category}\n'
-		print(line)
+		# print(line)
 		log_file.write(line)
 	return frame
 
@@ -251,7 +260,7 @@ def yolov7_onnx_process(frame, size='tiny_256x320'):
 		score = scores[i]
 		class_id = class_ids[i]
 		line = f'{now}, {int(x1):3d}, {int(y1):3d}, {int(x2):3d}, {int(y2):3d}, {score:0.2f}, {class_id:2d}, {yolov7_names[class_id]}\n'
-		print(line)
+		# print(line)
 		log_file.write(line)
 	return combined_img
 
