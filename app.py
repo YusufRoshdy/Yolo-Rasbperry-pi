@@ -35,6 +35,7 @@ app = Flask(__name__)
 
 stream_model = ''
 models = {}
+cap = None
 
 
 from os.path import exists
@@ -89,11 +90,13 @@ def stream():
 
 def gen():
     """Video streaming generator function."""
-    global stream_model
+    global stream_model, cap
     
     font = cv2.FONT_HERSHEY_SIMPLEX
     while True:
         try:
+            if cap is not None:
+                cap.release()
             cap = cv2.VideoCapture(0)
             old_time = time.time()
 
@@ -129,13 +132,16 @@ def gen():
                 
                 frame = cv2.imencode('.jpg', frame)[1].tobytes()
                 yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+                cap.release()
+                break
         except:
             frame = np.ones((512, 1024), dtype=np.int8)*254
-            cv2.putText(frame, "Camera is not available", (7,70), font, 2, (0, 255, 0), 2)
+            cv2.putText(frame, "Camera isn't available", (7,70), font, 2, (0, 255, 0), 2)
             
             frame = cv2.imencode('.jpg', frame)[1].tobytes()
             yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
-        
+            cap.release()
+            break
         
 
 def yolov5_process(frame, size='n'):
