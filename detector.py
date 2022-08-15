@@ -3,9 +3,6 @@
 from multiprocessing import Process, Manager
 from multiprocessing.connection import Client
 
-address = ('localhost', 6000)
-conn = Client(address, authkey=b'secret password')
-
 import time
 from datetime import datetime
 import cv2
@@ -24,70 +21,123 @@ from YOLOv7onnx.utils import class_names as yolov7_names
 
 from os.path import exists
 
+
+mode = 'a'
 if not exists('log.txt'):
-    with open("log.txt", "w") as f:
+    mode = 'w'
+log_file = open("log.txt", mode)
+
+log_file.write(f'\nstarting connection at {datetime.now()}')
+try:
+    address = ('localhost', 6000)
+    connection = Client(address, authkey=b'secret password')
+except Exception as e:
+    log_file.write('\tConnection failed:', e)
+    exit()
+log_file.write('\tConnected')
+log_file.close()
+    
+if not exists('detection log.txt'):
+    with open("detection log.txt", "w") as f:
         L = 'Time, Xmin, Ymin, Xmax, Ymax, Confidence, Class ID, Class Name\n'
         f.write(L)
 
 # Append-adds at last
-log_file = open("log.txt", "a")  # append mode
+detection_log_file = open("detection log.txt", "a")  # append mode
 #file1.close()
 
+
 font = cv2.FONT_HERSHEY_SIMPLEX
+cap = None
+models = {}
+stream_model = ''
 
+def send_frame(frame):
+    frame = cv2.imencode('.jpg', frame)[1].tobytes()
+    connection.send_bytes(frame)
 
-def camera_process(manager_dict):
+def camera_process():
+    global cap, stream_model
     while True:
         try:
-            # print('cam')
+            print('opening cap')
+            if cap is not None:
+                cap.release()
             cap = cv2.VideoCapture(0)
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1) 
             old_time = time.time()
 
             # Read until video is completed
+            last_send_flag = '1'
+            send_flag = '0'
             while (cap.isOpened()):
                 # Capture frame-by-frame
                 ret, frame = cap.read()
                 if ret != True:
+                    print('no frame')
                     break
+                
                 new_time = time.time()
                 fps = 1 / (new_time - old_time)
                 old_time = new_time
 
-                stream_model = manager_dict['stream_model']
+                # check if a new model is chosen
+                while connection.poll():
+                    stream_model, send_flag = connection.recv().split()
+                    
+                if 'custom' in stream_model.lower():
+                    print(stream_model)
 
-                if 'Yolov5' in stream_model:
-                    frame = yolov5_process(frame, size=stream_model[-1])
+                    if 'yolov5' in stream_model:
+                        frame = yolov5_process(frame, model_name=stream_model)
+                    
+                    elif 'yolov-fastestv2' == stream_model.lower():
+                        frame = yolo_fastest_process(frame, frame.shape[1], frame.shape[0], weights=stream_model)
+                        
+                    elif 'yolov7' in stream_model.lower():
+                        frame = yolov7_onnx_process(frame, model_name=stream_model)
+                                        
+                elif 'Yolov5' in stream_model:
+                    frame = yolov5_process(frame, model_name=f'yolov5{stream_model[-1]}.pt')
+                    
                 elif 'Yolov-Fastestv2' == stream_model:
                     frame = yolo_fastest_process(frame, frame.shape[1], frame.shape[0])
-                else:
-                    frame = yolov7_onnx_process(frame)
+                    
+                elif 'yolov7' in stream_model:
+                    frame = yolov7_onnx_process(frame, model_name=f"models/{stream_model}")
 
-                log_file.flush()
+                detection_log_file.flush()
 
                 fps = f'FPS:{fps: 0.2f}'
                 cv2.putText(frame, fps, (7, 70), font, 2, (0, 255, 0), 2)
 
-                manager_dict['frame'] = frame
+                # send the frame
+                if send_flag != last_send_flag:
+                    print('sending..')
+                    send_frame(frame)
+                    print('\tsent')
+                    last_send_flag = send_flag
+                else:
+                    print('No need to send', fps)
                 # frame = cv2.imencode('.jpg', frame)[1].tobytes()
                 # yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
             else:
                 frame = np.ones((512, 1024))
                 cv2.putText(frame, "Camera is not available", (7, 70), font, 2, (0, 255, 0), 2)
-                manager_dict['frame'] = frame
-        except:
+                send_frame(frame)
+        except Exception as e:
+            print(e)
             frame = np.ones((512, 1024), dtype=np.int8) * 254
             cv2.putText(frame, "Camera is not available", (7, 70), font, 2, (0, 255, 0), 2)
-            print(manager_dict, '************')
-            manager_dict['frame'] = frame
+            send_frame(frame)
 
             # frame = cv2.imencode('.jpg', frame)[1].tobytes()
             # yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
 
-def yolov5_process(frame, size='n'):
+def yolov5_process(frame, model_name=f'yolov5n.pt'):
     global models
 
-    model_name = f'yolov5{size}.pt'
     # load pretrained model
     if model_name in models:
         model = models[model_name]
@@ -109,12 +159,12 @@ def yolov5_process(frame, size='n'):
         for idx, row in results.pandas().xyxy[0].iterrows():
             line = f'{now}, {int(row.xmin):3d}, {int(row.ymin):3d}, {int(row.xmax):3d}, {int(row.ymax):3d}, {row.confidence:0.2f}, {int(row["class"]):2d}, {row["name"]}\n'
             # print(line)
-            log_file.write(line)
+            detection_log_file.write(line)
     new_frame = results.render()[0]
     return new_frame
 
 
-def yolo_fastest_process(frame, w, h):
+def yolo_fastest_process(frame, w, h, weights='modelzoo/fastest1.pth', datafile='data/coco.data'):
     global models
 
     model_name = f'yolovfastest.pt'
@@ -122,10 +172,10 @@ def yolo_fastest_process(frame, w, h):
     if model_name in models:
         (model, cfg, LABEL_NAMES, device, scale_h, scale_w) = models[model_name]
     else:
-        weights = 'modelzoo/coco2017-0.241078ap-model.pth'
-        weights = 'modelzoo/fastest1.pth'
+        # weights = 'modelzoo/coco2017-0.241078ap-model.pth'
+        # weights = 'modelzoo/fastest1.pth'
         data = 'data/coco.data'
-        cfg = utils.utils.load_datafile('data/coco.data')
+        cfg = utils.utils.load_datafile(datafile)
 
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         model = model_fastest.Detector(cfg["classes"], cfg["anchor_num"], True).to(device)
@@ -169,20 +219,18 @@ def yolo_fastest_process(frame, w, h):
 
         line = f'{now}, {x1:3d}, {y1:3d}, {x2:3d}, {y2:3d}, {obj_score:0.2f}, {int(box[5]):2d}, {category}\n'
         # print(line)
-        log_file.write(line)
+        detection_log_file.write(line)
     return frame
 
 
-def yolov7_onnx_process(frame, size='tiny_256x320'):
+def yolov7_onnx_process(frame, model_name="models/yolov7-tiny_256x320.onnx"):
     global models
 
-    model_name = f'yolov7-{size}.onnx'
     # load pretrained model
     if model_name in models:
         model = models[model_name]
     else:
-        model_path = f"models/{model_name}"
-        model = YOLOv7(model_path, conf_thres=0.5, iou_thres=0.5)
+        model = YOLOv7(model_name, conf_thres=0.5, iou_thres=0.5)
 
         models[model_name] = model
 
@@ -197,5 +245,13 @@ def yolov7_onnx_process(frame, size='tiny_256x320'):
         class_id = class_ids[i]
         line = f'{now}, {int(x1):3d}, {int(y1):3d}, {int(x2):3d}, {int(y2):3d}, {score:0.2f}, {class_id:2d}, {yolov7_names[class_id]}\n'
         # print(line)
-        log_file.write(line)
+        detection_log_file.write(line)
     return combined_img
+
+
+if __name__ == '__main__':
+    try:
+        camera_process()
+    except Exception as e:
+        with open("log.txt", "w") as f:
+            f.write('Crash: ' + str(e))
