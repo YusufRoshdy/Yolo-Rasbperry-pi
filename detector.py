@@ -50,7 +50,7 @@ detection_log_file = open("detection log.txt", "a")  # append mode
 font = cv2.FONT_HERSHEY_SIMPLEX
 cap = None
 models = {}
-stream_model = ''
+stream_model = "models/yolov7-tiny_256x320.onnx"
 
 def send_frame(frame):
     frame = cv2.imencode('.jpg', frame)[1].tobytes()
