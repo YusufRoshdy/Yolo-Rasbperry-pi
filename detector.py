@@ -81,14 +81,16 @@ def camera_process():
                 old_time = new_time
 
                 # check if a new model is chosen
-                print('polling connection')
+                # print('polling connection')
                 
-                while connection.poll():
+                
+                if connection.poll():
                     stream_model, send_flag = connection.recv().split()
-                    print(f'\tReceived data: {stream_model=}, {send_flag=}')
-                    
+                    # print(f'\tReceived data: {stream_model=}, {send_flag=}')
+                
+                time_begin = time.time()
                 if 'custom' in stream_model.lower():
-                    print(stream_model)
+                    # print(stream_model)
 
                     if 'yolov5' in stream_model:
                         frame = yolov5_process(frame, model_name=stream_model)
@@ -108,16 +110,18 @@ def camera_process():
                 elif 'yolov7' in stream_model:
                     frame = yolov7_onnx_process(frame, model_name=f"models/{stream_model}")
 
-                detection_log_file.flush()
+                # detection_log_file.flush()
 
-                fps = f'FPS:{fps: 0.2f}'
+                fps = f'FPS: {fps: 0.2f}'
                 cv2.putText(frame, fps, (7, 70), font, 2, (0, 255, 0), 2)
+                time_end = time.time()
+                # print('Processing time:', time_end - time_begin)
 
                 # send the frame
                 if send_flag == '1':
-                    print('sending..')
+                    # print('sending..')
                     send_frame(frame)
-                    print('\tsent')
+                    # print('\tsent', fps)
                     send_flag = '0'
                 else:
                     print('No need to send', fps)
