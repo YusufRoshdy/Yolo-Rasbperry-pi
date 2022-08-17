@@ -10,18 +10,8 @@ import numpy as np
 
 from pathlib import Path
 
-address = ('localhost', 6000)     # family is deduced to be 'AF_INET'
-listener = Listener(address, authkey=b'secret password')
-conn = listener.accept()
-print('connection accepted from', listener.last_accepted)
-
 
 custom_models = []
-for child in Path('custom').iterdir():
-    if child.is_file():
-        print(child.name, type(child.name))
-        custom_models.append('custom/' + child.name)
-
 
 app = Flask(__name__)
 first_run_flag = True
@@ -103,4 +93,15 @@ def video_feed():
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
 if __name__ == '__main__':
+    address = ('localhost', 6000)     # family is deduced to be 'AF_INET'
+    listener = Listener(address, authkey=b'secret password')
+    conn = listener.accept()
+    print('connection accepted from', listener.last_accepted)
+
+    for child in Path('custom').iterdir():
+        if child.is_file():
+            print(child.name, type(child.name))
+            custom_models.append('custom/' + child.name)
+
+
     app.run('0.0.0.0', 5000, debug=False)

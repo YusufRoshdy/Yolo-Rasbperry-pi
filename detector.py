@@ -50,7 +50,7 @@ detection_log_file = open("detection log.txt", "a")  # append mode
 font = cv2.FONT_HERSHEY_SIMPLEX
 cap = None
 models = {}
-stream_model = "models/yolov7-tiny_256x320.onnx"
+stream_model = "yolov7-tiny_256x320.onnx"
 
 def send_frame(frame):
     frame = cv2.imencode('.jpg', frame)[1].tobytes()
@@ -63,7 +63,7 @@ def camera_process():
             print('opening cap')
             if cap is not None:
                 cap.release()
-            cap = cv2.VideoCapture(0)
+            cap = cv2.VideoCapture('How To See Germs Spread Experiment (Coronavirus).mp4')
             cap.set(cv2.CAP_PROP_BUFFERSIZE, 1) 
             old_time = time.time()
 
@@ -253,5 +253,5 @@ if __name__ == '__main__':
     try:
         camera_process()
     except Exception as e:
-        with open("log.txt", "w") as f:
+        with open("log.txt", "a") as f:
             f.write('Crash: ' + str(e))
