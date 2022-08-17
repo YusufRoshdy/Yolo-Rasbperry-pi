@@ -77,13 +77,17 @@ def gen():
     cv2.putText(frame, "Trying to load the camera", (7,70), font, 2, (0, 255, 0), 2)
     frame = cv2.imencode('.jpg', frame)[1].tobytes()
     
-    send_flag = 0
+    send_flag = 1
+    conn.send(stream_model + ' ' + str(send_flag))
     while True:
-        conn.send(stream_model + ' ' + str(send_flag))
-        send_flag = (send_flag+1) % 2
+        received = False
         while conn.poll():
             frame = conn.recv_bytes()
-            # print('Hey')
+            received = True
+        if received:
+            # send_flag = (send_flag + 1) % 2
+            print(f'Frame handled, requesting next frame. {send_flag=}')
+            conn.send(stream_model + ' ' + str(send_flag))
         yield (b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
         
 @app.route('/video_feed')

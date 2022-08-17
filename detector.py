@@ -68,7 +68,6 @@ def camera_process():
             old_time = time.time()
 
             # Read until video is completed
-            last_send_flag = '1'
             send_flag = '0'
             while (cap.isOpened()):
                 # Capture frame-by-frame
@@ -82,8 +81,11 @@ def camera_process():
                 old_time = new_time
 
                 # check if a new model is chosen
+                print('polling connection')
+                
                 while connection.poll():
                     stream_model, send_flag = connection.recv().split()
+                    print(f'\tReceived data: {stream_model=}, {send_flag=}')
                     
                 if 'custom' in stream_model.lower():
                     print(stream_model)
@@ -112,11 +114,11 @@ def camera_process():
                 cv2.putText(frame, fps, (7, 70), font, 2, (0, 255, 0), 2)
 
                 # send the frame
-                if send_flag != last_send_flag:
+                if send_flag == '1':
                     print('sending..')
                     send_frame(frame)
                     print('\tsent')
-                    last_send_flag = send_flag
+                    send_flag = '0'
                 else:
                     print('No need to send', fps)
                 # frame = cv2.imencode('.jpg', frame)[1].tobytes()
